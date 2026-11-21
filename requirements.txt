@@ -1,0 +1,6 @@
+numpy
+opencv-python
+paddleocr
+paddlepaddle
+pytesseract          # optional backend (needs the Tesseract binary)
+pytest

@@ -29,9 +29,10 @@ def main() -> None:
     ap.add_argument("--backend", choices=["paddle", "tesseract"], default="paddle")
     ap.add_argument("--lang", default=None, help="paddle: en / fr / ar ... ; tesseract: eng+fra ...")
     ap.add_argument("--out", default=None, help="output folder (one JSON per image)")
+    ap.add_argument("--size", choices=["mobile", "server"], default="mobile", help="PaddleOCR model size")
     a = ap.parse_args()
 
-    backend = get_backend(a.backend, a.lang)
+    backend = get_backend(a.backend, a.lang, a.size)
     files = ([a.input] if os.path.isfile(a.input) else
              sorted(glob.glob(os.path.join(a.input, "*.jpg")) + glob.glob(os.path.join(a.input, "*.png"))))
     for f in files:

@@ -16,16 +16,32 @@ class Word:
 class PaddleBackend:
     """PaddleOCR: DB text detection followed by CRNN/SVTR recognition."""
 
-    def __init__(self, lang: str = "en"):
+    def __init__(self, lang: str = "en", size: str = "mobile"):
+        import paddleocr
         from paddleocr import PaddleOCR
-        self.ocr = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
+        self.v3 = int(paddleocr.__version__.split(".")[0]) >= 3
+        if self.v3:   # PaddleOCR 3.x: document unwarping / orientation off, we pre-process ourselves
+            # oneDNN is disabled: Paddle 3.x on Windows CPU raises "ConvertPirAttribute2RuntimeAttribute
+            # not support" with it enabled
+            # size: "mobile" (PP-OCRv5 mobile det + rec, fast on CPU) or "server" (larger, slower)
+            self.ocr = PaddleOCR(lang=lang, use_doc_orientation_classify=False, use_doc_unwarping=False,
+                                 use_textline_orientation=False, enable_mkldnn=False,
+                                 text_detection_model_name=f"PP-OCRv5_{size}_det",
+                                 text_recognition_model_name=f"PP-OCRv5_{size}_rec")
+        else:         # PaddleOCR 2.x
+            self.ocr = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
 
     def __call__(self, img: np.ndarray) -> list[Word]:
-        result = self.ocr.ocr(img, cls=True)
         words = []
-        for quad, (text, conf) in (result[0] or []):
-            xs, ys = [p[0] for p in quad], [p[1] for p in quad]
-            words.append(Word(text.strip(), (min(xs), min(ys), max(xs), max(ys)), float(conf)))
+        if self.v3:
+            res = self.ocr.predict(img)[0]
+            for text, conf, poly in zip(res["rec_texts"], res["rec_scores"], res["rec_polys"]):
+                xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+                words.append(Word(text.strip(), (min(xs), min(ys), max(xs), max(ys)), float(conf)))
+        else:
+            for quad, (text, conf) in (self.ocr.ocr(img, cls=True)[0] or []):
+                xs, ys = [p[0] for p in quad], [p[1] for p in quad]
+                words.append(Word(text.strip(), (min(xs), min(ys), max(xs), max(ys)), float(conf)))
         return [w for w in words if w.text]
 
 
@@ -48,9 +64,9 @@ class TesseractBackend:
         return words
 
 
-def get_backend(name: str, lang: str | None = None):
+def get_backend(name: str, lang: str | None = None, size: str = "mobile"):
     if name == "paddle":
-        return PaddleBackend(lang or "en")
+        return PaddleBackend(lang or "en", size)
     if name == "tesseract":
         return TesseractBackend(lang or "eng+fra")
     raise ValueError(f"unknown backend {name}")
